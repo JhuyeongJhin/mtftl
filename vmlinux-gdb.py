@@ -1,0 +1,1 @@
+/home/jhin/mtftl_total/mtftl_lightnvm/scripts/gdb/vmlinux-gdb.py

@@ -26,6 +26,7 @@ int pblk_write_to_cache(struct pblk *pblk, struct bio *bio, unsigned long flags)
 	int i, ret;
 	unsigned int nrb;
 	int user_rb_option = pblk->user_rb_option;
+	int gc_rb_option = pblk->gc_rb_option;
 
 	/* Update the write buffer head (mem) with the entries that we can
 	 * write. The write in itself cannot fail, so there is no need to
@@ -36,9 +37,15 @@ retry:
 		preempt_disable();
 		nrb = smp_processor_id();
 	} else if (user_rb_option == 2) {
-		nrb = pblk_rb_random(pblk->nr_rwb);
+		if (gc_rb_option == 4)
+			nrb = pblk_rb_random(pblk->nr_rwb-1);
+		else
+			nrb = pblk_rb_random(pblk->nr_rwb);
 	} else if (user_rb_option == 3) {
-		nrb = pblk_rb_remain_max(pblk, nr_entries);
+		if (gc_rb_option == 4)
+			nrb = pblk_rb_remain_max(pblk, nr_entries, pblk->nr_rwb-1);
+		else
+			nrb = pblk_rb_remain_max(pblk, nr_entries, pblk->nr_rwb);
 	}
 
 	ret = pblk_rb_may_write_user(&pblk->rb_ctx[nrb].rwb, nrb, bio, nr_entries, &bpos);
@@ -91,7 +98,6 @@ out:
 	return ret;
 }
 
-// JJY: TODO: GC RB
 /*
  * On GC the incoming lbas are not necessarily sequential. Also, some of the
  * lbas might not be valid entries, which are marked as empty by the GC thread
@@ -103,16 +109,37 @@ int pblk_write_gc_to_cache(struct pblk *pblk, void *data, u64 *lba_list,
 	struct pblk_w_ctx w_ctx;
 	unsigned int bpos, pos;
 	int i, valid_entries;
+	unsigned int nrb;
+	int gc_rb_option = pblk->gc_rb_option;
 
 	/* Update the write buffer head (mem) with the entries that we can
 	 * write. The write in itself cannot fail, so there is no need to
 	 * rollback from here on.
 	 */
 retry:
-	if (!pblk_rb_may_write_gc(&pblk->rb_ctx[0].rwb, nr_rec_entries, &bpos)) {
+	if (gc_rb_option == 1) {
+		preempt_disable();
+		nrb = smp_processor_id();
+	}
+	else if (gc_rb_option == 2) {
+		nrb = pblk_rb_random(pblk->nr_rwb);
+	}
+	else if (gc_rb_option == 3) {
+		nrb = pblk_rb_gc_remain_max(pblk, nr_entries);
+	}
+	else if (gc_rb_option == 4) {
+		nrb = pblk->nr_rwb-1;
+	}
+
+	if (!pblk_rb_may_write_gc(&pblk->rb_ctx[nrb].rwb, nrb, nr_rec_entries, &bpos)) {
+		if (gc_rb_option == 1)
+			preempt_enable();
 		io_schedule();
 		goto retry;
 	}
+
+	if (gc_rb_option == 1)
+		preempt_enable();
 
 	w_ctx.flags = flags;
 	pblk_ppa_set_empty(&w_ctx.ppa);
@@ -123,8 +150,8 @@ retry:
 
 		w_ctx.lba = lba_list[i];
 
-		pos = pblk_rb_wrap_pos(&pblk->rb_ctx[0].rwb, bpos + valid_entries);
-		pblk_rb_write_entry_gc(&pblk->rb_ctx[0].rwb, data, w_ctx, gc_line, pos);
+		pos = pblk_rb_wrap_pos(&pblk->rb_ctx[nrb].rwb, bpos + valid_entries);
+		pblk_rb_write_entry_gc(&pblk->rb_ctx[nrb].rwb, data, w_ctx, gc_line, pos);
 
 		data += PBLK_EXPOSED_PAGE_SIZE;
 		valid_entries++;
@@ -138,6 +165,6 @@ retry:
 	atomic_long_add(valid_entries, &pblk->recov_gc_writes);
 #endif
 
-	pblk_write_should_kick(pblk, 0);
+	pblk_write_should_kick(pblk, nrb);
 	return NVM_IO_OK;
 }

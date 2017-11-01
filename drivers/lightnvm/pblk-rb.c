@@ -33,7 +33,7 @@ unsigned int pblk_rb_random(unsigned int nr_rwb)
         return nrb;
 }
 
-unsigned int pblk_rb_remain_max(struct pblk *pblk, int nr_entries)
+unsigned int pblk_rb_remain_max(struct pblk *pblk, int nr_entries, int nr_rwb)
 {
         unsigned int nrb, i;
         int remain_max, remain_cnt;
@@ -46,7 +46,7 @@ unsigned int pblk_rb_remain_max(struct pblk *pblk, int nr_entries)
 
         remain_max = rl->rb_user_max - atomic_read(&rb_rl->rb_user_cnt);
 
-        for (i = nrb+1; i < pblk->nr_rwb; i++) {
+        for (i = nrb+1; i < nr_rwb; i++) {
 		rb_rl = &pblk->rb_ctx[nrb].rb_rl;
                 remain_cnt = rl->rb_user_max - atomic_read(&rb_rl->rb_user_cnt);
                 if ( (remain_max >= nr_entries) && (remain_max < remain_cnt) ) {
@@ -56,6 +56,31 @@ unsigned int pblk_rb_remain_max(struct pblk *pblk, int nr_entries)
         }
 
         return nrb;
+}
+
+unsigned int pblk_rb_gc_remain_max(struct pblk *pblk, int nr_entries)
+{
+        unsigned int nrb, i;
+        int remain_max, remain_cnt;
+	struct pblk_rl *rl;
+	struct pblk_rl_per_rb *rb_rl;
+
+        nrb = 0;
+	rl = &pblk->rl;	
+	rb_rl = &pblk->rb_ctx[nrb].rb_rl;
+
+        remain_max = rl->rb_gc_max - atomic_read(&rb_rl->rb_gc_cnt);
+
+        for (i = nrb+1; i < pblk->nr_rwb; i++) {
+		rb_rl = &pblk->rb_ctx[nrb].rb_rl;
+                remain_cnt = rl->rb_gc_max - atomic_read(&rb_rl->rb_gc_cnt);
+                if ( (remain_max >= nr_entries) && (remain_max < remain_cnt) ) {
+                        nrb = i;
+                        remain_max = remain_cnt;
+                }
+        }
+
+	return nrb;
 }
 
 void pblk_rb_data_free(struct pblk_rb *rb)
@@ -526,17 +551,16 @@ int pblk_rb_may_write_user(struct pblk_rb *rb, unsigned int nrb, struct bio *bio
 	return io_ret;
 }
 
-// JJY: TODO: rl, rb
 /*
  * Look at pblk_rb_may_write_user comment
  */
-int pblk_rb_may_write_gc(struct pblk_rb *rb, unsigned int nr_entries,
+int pblk_rb_may_write_gc(struct pblk_rb *rb, unsigned int nrb, unsigned int nr_entries,
 			 unsigned int *pos)
 {
 	struct pblk *pblk = rb->pblk;
 
 	spin_lock(&rb->w_lock);
-	if (!pblk_rl_gc_may_insert(&pblk->rl, &pblk->rb_ctx[0].rb_rl, nr_entries)) {
+	if (!pblk_rl_gc_may_insert(&pblk->rl, &pblk->rb_ctx[nrb].rb_rl, nr_entries)) {
 		spin_unlock(&rb->w_lock);
 		return 0;
 	}
@@ -546,7 +570,7 @@ int pblk_rb_may_write_gc(struct pblk_rb *rb, unsigned int nr_entries,
 		return 0;
 	}
 
-	pblk_rl_gc_in(&pblk->rb_ctx[0].rb_rl, nr_entries);
+	pblk_rl_gc_in(&pblk->rb_ctx[nrb].rb_rl, nr_entries);
 	spin_unlock(&rb->w_lock);
 
 	return 1;

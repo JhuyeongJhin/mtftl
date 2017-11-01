@@ -671,7 +671,7 @@ unsigned int pblk_rb_calculate_size(unsigned int nr_entries);
 void *pblk_rb_entries_ref(struct pblk_rb *rb);
 int pblk_rb_may_write_user(struct pblk_rb *rb, unsigned int nrb, struct bio *bio,
 			   unsigned int nr_entries, unsigned int *pos);
-int pblk_rb_may_write_gc(struct pblk_rb *rb, unsigned int nr_entries,
+int pblk_rb_may_write_gc(struct pblk_rb *rb, unsigned int nrb, unsigned int nr_entries,
 			 unsigned int *pos);
 void pblk_rb_write_entry_user(struct pblk_rb *rb, void *data,
 			      struct pblk_w_ctx w_ctx, unsigned int pos);
@@ -709,7 +709,8 @@ void pblk_rb_data_free(struct pblk_rb *rb);
 ssize_t pblk_rb_sysfs(struct pblk_rb *rb, char *buf);
 
 unsigned int pblk_rb_random(unsigned int nr_rwb);
-unsigned int pblk_rb_remain_max(struct pblk *pblk, int nr_entries);
+unsigned int pblk_rb_remain_max(struct pblk *pblk, int nr_entries, int nr_rwb);
+unsigned int pblk_rb_gc_remain_max(struct pblk *pblk, int nr_entries);
 
 /*
  * pblk core

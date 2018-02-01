@@ -92,7 +92,7 @@ retry:
 #endif
 	
 	pblk_rl_inserted(&pblk->rb_ctx[nrb].rb_rl, nr_entries);
-	printk("JJY: cache cpu %d rb %d pos %d\n", smp_processor_id(), nrb, bpos);
+//	printk("JJY: cache cpu %d rb %d pos %d\n", smp_processor_id(), nrb, bpos);
 out:
 	pblk_write_should_kick(pblk, nrb);
 	return ret;

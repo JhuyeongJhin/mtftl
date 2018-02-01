@@ -462,7 +462,7 @@ struct pblk_line_mgmt {
 	struct pblk_line *log_next;	/* Next FTL log line */
 	struct pblk_line **data_next;	/* Next data line */
 
-	struct list_head emeta_list;	/* Lines queued to schedule emeta */
+	struct list_head *emeta_list;	/* Lines queued to schedule emeta */
 
 	__le32 *vsc_list;		/* Valid sector counts for all lines */
 
@@ -482,7 +482,7 @@ struct pblk_line_mgmt {
 	unsigned long l_seq_nr;		/* Log line unique sequence number */
 
 	spinlock_t free_lock;
-	spinlock_t close_lock;
+	spinlock_t *close_lock;
 	spinlock_t gc_lock;
 };
 
@@ -726,7 +726,7 @@ void pblk_discard(struct pblk *pblk, struct bio *bio);
 void pblk_log_write_err(struct pblk *pblk, struct nvm_rq *rqd);
 void pblk_log_read_err(struct pblk *pblk, struct nvm_rq *rqd);
 int pblk_submit_io(struct pblk *pblk, struct nvm_rq *rqd);
-int pblk_submit_meta_io(struct pblk *pblk, struct pblk_line *meta_line);
+int pblk_submit_meta_io(struct pblk *pblk, struct pblk_line *meta_line, unsigned int nrb);
 struct bio *pblk_bio_map_addr(struct pblk *pblk, void *data,
 			      unsigned int nr_secs, unsigned int len,
 			      int alloc_type, gfp_t gfp_mask);
@@ -742,7 +742,7 @@ int pblk_line_is_full(struct pblk_line *line);
 void pblk_line_free(struct pblk *pblk, struct pblk_line *line);
 void pblk_line_close_meta(struct pblk *pblk, struct pblk_line *line, unsigned int nrb);
 void pblk_line_close(struct pblk *pblk, struct pblk_line *line);
-void pblk_line_close_meta_sync(struct pblk *pblk);
+void pblk_line_close_meta_sync(struct pblk *pblk, unsigned int nrb);
 void pblk_line_close_ws(struct work_struct *work);
 void pblk_pipeline_stop(struct pblk *pblk);
 void pblk_line_mark_bb(struct work_struct *work);

@@ -1367,7 +1367,8 @@ void pblk_pipeline_stop(struct pblk *pblk)
 	}
 
 	flush_workqueue(pblk->bb_wq);
-	pblk_line_close_meta_sync(pblk);
+	for (i = 0; i < nr_rwb; i++)
+		pblk_line_close_meta_sync(pblk, i);
 
 	spin_lock(&l_mg->free_lock);
 	pblk->state = PBLK_STATE_STOPPED;
@@ -1536,21 +1537,21 @@ int pblk_line_is_full(struct pblk_line *line)
 	return (line->left_msecs == 0);
 }
 
-void pblk_line_close_meta_sync(struct pblk *pblk)
+void pblk_line_close_meta_sync(struct pblk *pblk, unsigned int nrb)
 {
 	struct pblk_line_mgmt *l_mg = &pblk->l_mg;
 	struct pblk_line_meta *lm = &pblk->lm;
 	struct pblk_line *line, *tline;
 	LIST_HEAD(list);
 
-	spin_lock(&l_mg->close_lock);
-	if (list_empty(&l_mg->emeta_list)) {
-		spin_unlock(&l_mg->close_lock);
+	spin_lock(&l_mg->close_lock[nrb]);
+	if (list_empty(&l_mg->emeta_list[nrb])) {
+		spin_unlock(&l_mg->close_lock[nrb]);
 		return;
 	}
 
-	list_cut_position(&list, &l_mg->emeta_list, l_mg->emeta_list.prev);
-	spin_unlock(&l_mg->close_lock);
+	list_cut_position(&list, &l_mg->emeta_list[nrb], l_mg->emeta_list[nrb].prev);
+	spin_unlock(&l_mg->close_lock[nrb]);
 
 	list_for_each_entry_safe(line, tline, &list, list) {
 		struct pblk_emeta *emeta = line->emeta;
@@ -1558,7 +1559,7 @@ void pblk_line_close_meta_sync(struct pblk *pblk)
 		while (emeta->mem < lm->emeta_len[0]) {
 			int ret;
 
-			ret = pblk_submit_meta_io(pblk, line);
+			ret = pblk_submit_meta_io(pblk, line, nrb);
 			if (ret) {
 				pr_err("pblk: sync meta line %d failed (%d)\n",
 							line->id, ret);
@@ -1574,7 +1575,7 @@ void pblk_line_close_meta_sync(struct pblk *pblk)
 static void pblk_line_should_sync_meta(struct pblk *pblk, unsigned int nrb)
 {
 	if (pblk_rl_is_limit(&pblk->rb_ctx[nrb].rb_rl))
-		pblk_line_close_meta_sync(pblk);
+		pblk_line_close_meta_sync(pblk, nrb);
 }
 
 void pblk_line_close(struct pblk *pblk, struct pblk_line *line)
@@ -1626,11 +1627,11 @@ void pblk_line_close_meta(struct pblk *pblk, struct pblk_line *line, unsigned in
 	emeta_buf->nr_valid_lbas = cpu_to_le64(line->nr_valid_lbas);
 	emeta_buf->crc = cpu_to_le32(pblk_calc_emeta_crc(pblk, emeta_buf));
 
-	spin_lock(&l_mg->close_lock);
+	spin_lock(&l_mg->close_lock[nrb]);
 	spin_lock(&line->lock);
-	list_add_tail(&line->list, &l_mg->emeta_list);
+	list_add_tail(&line->list, &l_mg->emeta_list[nrb]);
 	spin_unlock(&line->lock);
-	spin_unlock(&l_mg->close_lock);
+	spin_unlock(&l_mg->close_lock[nrb]);
 
 	pblk_line_should_sync_meta(pblk, nrb);
 }
@@ -1726,7 +1727,7 @@ void pblk_down_page(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas)
 	struct nvm_geo *geo = &dev->geo;
 	int pos = pblk_ppa_to_pos(geo, ppa_list[0]);
 
-	__pblk_down_page(pblk, ppa_list, nr_ppas, pos);
+//	__pblk_down_page(pblk, ppa_list, nr_ppas, pos);
 }
 
 void pblk_down_rq(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas,
@@ -1742,7 +1743,7 @@ void pblk_down_rq(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas,
 	if (test_and_set_bit(pos, lun_bitmap))
 		return;
 
-	__pblk_down_page(pblk, ppa_list, nr_ppas, pos);
+//	__pblk_down_page(pblk, ppa_list, nr_ppas, pos);
 }
 
 void pblk_up_page(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas)
@@ -1761,7 +1762,7 @@ void pblk_up_page(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas)
 #endif
 
 	rlun = &pblk->luns[pos];
-	up(&rlun->wr_sem);
+//	up(&rlun->wr_sem);
 }
 
 void pblk_up_rq(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas,
@@ -1775,7 +1776,7 @@ void pblk_up_rq(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas,
 
 	while ((bit = find_next_bit(lun_bitmap, nr_luns, bit + 1)) < nr_luns) {
 		rlun = &pblk->luns[bit];
-		up(&rlun->wr_sem);
+//		up(&rlun->wr_sem);
 	}
 
 	kfree(lun_bitmap);

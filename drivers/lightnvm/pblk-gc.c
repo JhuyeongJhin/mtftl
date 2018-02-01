@@ -440,7 +440,6 @@ static int pblk_gc_ts(void *data)
 {
 	struct pblk *pblk = data;
 
-	printk("JJY: pblk_gc_ts\n");
 	while (!kthread_should_stop()) {
 		pblk_gc_run(pblk);
 		set_current_state(TASK_INTERRUPTIBLE);

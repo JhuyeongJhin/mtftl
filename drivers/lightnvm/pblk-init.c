@@ -780,14 +780,20 @@ add_emeta_page:
 	INIT_LIST_HEAD(&l_mg->gc_low_list);
 	INIT_LIST_HEAD(&l_mg->gc_empty_list);
 
-	INIT_LIST_HEAD(&l_mg->emeta_list);
+	l_mg->emeta_list = vmalloc(pblk->nr_rwb * sizeof(struct list_head));
+	for (i = 0; i < pblk->nr_rwb; i++)
+		INIT_LIST_HEAD(&l_mg->emeta_list[i]);
+//	INIT_LIST_HEAD(&l_mg->emeta_list);	JJY TODO
 
 	l_mg->gc_lists[0] = &l_mg->gc_high_list;
 	l_mg->gc_lists[1] = &l_mg->gc_mid_list;
 	l_mg->gc_lists[2] = &l_mg->gc_low_list;
 
+	l_mg->close_lock = vmalloc(pblk->nr_rwb * sizeof(spinlock_t));
 	spin_lock_init(&l_mg->free_lock);
-	spin_lock_init(&l_mg->close_lock);
+	for (i = 0; i < pblk->nr_rwb; i++)
+		spin_lock_init(&l_mg->close_lock[i]);
+//	spin_lock_init(&l_mg->close_lock);	 JJY TODO
 	spin_lock_init(&l_mg->gc_lock);
 
 	pblk->lines = kcalloc(l_mg->nr_lines, sizeof(struct pblk_line),
@@ -862,12 +868,13 @@ fail:
 static int pblk_writer_init(struct pblk *pblk)
 {
 	int i, nr_rwb = pblk->nr_rwb;
+	char name_buf[15];
 
 	setup_timer(&pblk->wtimer, pblk_write_timer_fn, (unsigned long)pblk);
 	mod_timer(&pblk->wtimer, jiffies + msecs_to_jiffies(100));
 
 	for (i = 0; i < nr_rwb; i++) {
-		pblk->rb_ctx[i].writer_ts = kthread_create(pblk_write_ts, &pblk->rb_ctx[i], "pblk-writer-t");	// JJY: TODO: thread name, pinning
+		pblk->rb_ctx[i].writer_ts = kthread_create(pblk_write_ts, &pblk->rb_ctx[i], "pblk-writer-t");	// JJY: TODO: thread name
 		if (pblk->wt_pin)
 			kthread_bind(pblk->rb_ctx[i].writer_ts, i);
 

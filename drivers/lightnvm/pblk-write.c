@@ -17,7 +17,6 @@
 
 #include "pblk.h"
 
-// JJY: TODO: rb
 static unsigned long pblk_end_w_bio(struct pblk *pblk, struct nvm_rq *rqd,
 				    struct pblk_c_ctx *c_ctx)
 {
@@ -177,6 +176,7 @@ static void pblk_end_io_write(struct nvm_rq *rqd)
 	struct pblk *pblk = rqd->private;
 	struct pblk_c_ctx *c_ctx = nvm_rq_to_pdu(rqd);
 
+ 	printk("JJY: S end_w cpu %d %d\n", smp_processor_id(), rqd->nrb);
 	if (rqd->error) {
 		pblk_log_write_err(pblk, rqd);
 		return pblk_end_w_fail(pblk, rqd);
@@ -186,9 +186,9 @@ static void pblk_end_io_write(struct nvm_rq *rqd)
 		WARN_ONCE(rqd->bio->bi_status, "pblk: corrupted write error\n");
 #endif
 
- 	printk("JJY: end cpu %d rb %d pos %d\n", smp_processor_id(), rqd->nrb, c_ctx->sentry);
 	pblk_complete_write(pblk, rqd, c_ctx);
 	atomic_dec(&pblk->inflight_io);
+ 	printk("JJY: E end_w cpu %d %d\n", smp_processor_id(), rqd->nrb);
 }
 
 static void pblk_end_io_write_meta(struct nvm_rq *rqd)
@@ -200,6 +200,7 @@ static void pblk_end_io_write_meta(struct nvm_rq *rqd)
 	struct pblk_emeta *emeta = line->emeta;
 	int sync;
 
+ 	printk("JJY: S end_meta %d %d\n", smp_processor_id(), rqd->nrb);
 	pblk_up_page(pblk, rqd->ppa_list, rqd->nr_ppas);
 
 	if (rqd->error) {
@@ -221,6 +222,7 @@ static void pblk_end_io_write_meta(struct nvm_rq *rqd)
 	pblk_free_rqd(pblk, rqd, READ);
 
 	atomic_dec(&pblk->inflight_io);
+ 	printk("JJY: E end_meta %d %d\n", smp_processor_id(), rqd->nrb);
 }
 
 static int pblk_alloc_w_rq(struct pblk *pblk, struct nvm_rq *rqd,
@@ -371,7 +373,7 @@ static inline int pblk_valid_meta_ppa(struct pblk *pblk,
 	return 0;
 }
 
-int pblk_submit_meta_io(struct pblk *pblk, struct pblk_line *meta_line)
+int pblk_submit_meta_io(struct pblk *pblk, struct pblk_line *meta_line, unsigned int nrb)
 {
 	struct nvm_tgt_dev *dev = pblk->dev;
 	struct nvm_geo *geo = &dev->geo;
@@ -424,29 +426,31 @@ int pblk_submit_meta_io(struct pblk *pblk, struct pblk_line *meta_line)
 
 	emeta->mem += rq_len;
 	if (emeta->mem >= lm->emeta_len[0]) {
-		spin_lock(&l_mg->close_lock);
+		spin_lock(&l_mg->close_lock[nrb]);
 		list_del(&meta_line->list);
 		WARN(!bitmap_full(meta_line->map_bitmap, lm->sec_per_line),
 				"pblk: corrupt meta line %d\n", meta_line->id);
-		spin_unlock(&l_mg->close_lock);
+		spin_unlock(&l_mg->close_lock[nrb]);
 	}
 
 	pblk_down_page(pblk, rqd->ppa_list, rqd->nr_ppas);
 
+ 	printk("JJY: S sched_meta_io cpu %d\n", smp_processor_id());
 	ret = pblk_submit_io(pblk, rqd);
 	if (ret) {
 		pr_err("pblk: emeta I/O submission failed: %d\n", ret);
 		goto fail_rollback;
 	}
+ 	printk("JJY: E sched_meta_io cpu %d\n", smp_processor_id());
 
 	return NVM_IO_OK;
 
 fail_rollback:
 	pblk_up_page(pblk, rqd->ppa_list, rqd->nr_ppas);
-	spin_lock(&l_mg->close_lock);
+	spin_lock(&l_mg->close_lock[nrb]);
 	pblk_dealloc_page(pblk, meta_line, rq_ppas);
 	list_add(&meta_line->list, &meta_line->list);
-	spin_unlock(&l_mg->close_lock);
+	spin_unlock(&l_mg->close_lock[nrb]);
 
 	nvm_dev_dma_free(dev->parent, rqd->meta_list, rqd->dma_meta_list);
 fail_free_bio:
@@ -458,27 +462,37 @@ fail_free_rqd:
 }
 
 static int pblk_sched_meta_io(struct pblk *pblk, struct ppa_addr *prev_list,
-			       int prev_n)
+			       int prev_n, unsigned int nrb)
 {
 	struct pblk_line_meta *lm = &pblk->lm;
 	struct pblk_line_mgmt *l_mg = &pblk->l_mg;
 	struct pblk_line *meta_line;
+	int cpu = (int) smp_processor_id();
 
-	spin_lock(&l_mg->close_lock);
+	printk("JJY: 1 sched_meta cpu %d\n", cpu);
+	spin_lock(&l_mg->close_lock[nrb]);
 retry:
-	if (list_empty(&l_mg->emeta_list)) {
-		spin_unlock(&l_mg->close_lock);
+	printk("JJY: 2 sched_meta cpu %d\n", cpu);
+	if (list_empty(&l_mg->emeta_list[nrb])) {
+		printk("JJY: 2-1 sched_meta cpu %d\n", cpu);
+		spin_unlock(&l_mg->close_lock[nrb]);
+		printk("JJY: 2-2 sched_meta cpu %d\n", cpu);
 		return 0;
 	}
-	meta_line = list_first_entry(&l_mg->emeta_list, struct pblk_line, list);
-	if (bitmap_full(meta_line->map_bitmap, lm->sec_per_line))
-		goto retry;
-	spin_unlock(&l_mg->close_lock);
 
+	printk("JJY: 3 sched_meta cpu %d\n", cpu);
+	meta_line = list_first_entry(&l_mg->emeta_list[nrb], struct pblk_line, list);
+	if (bitmap_full(meta_line->map_bitmap, lm->sec_per_line)) {
+		printk("JJY: 3-1 sched_meta cpu %d\n", cpu);
+		goto retry;
+	}
+	spin_unlock(&l_mg->close_lock[nrb]);
+
+	printk("JJY: 4 sched_meta cpu %d\n", cpu);
 	if (!pblk_valid_meta_ppa(pblk, meta_line, prev_list, prev_n))
 		return 0;
 
-	return pblk_submit_meta_io(pblk, meta_line);
+	return pblk_submit_meta_io(pblk, meta_line, nrb);
 }
 
 static int pblk_submit_io_set(struct pblk *pblk, struct nvm_rq *rqd, unsigned int nrb)
@@ -489,23 +503,29 @@ static int pblk_submit_io_set(struct pblk *pblk, struct nvm_rq *rqd, unsigned in
 
 	ppa_set_empty(&erase_ppa);
 
+ 	printk("JJY: S setup_w %d\n", smp_processor_id());
 	/* Assign lbas to ppas and populate request structure */
 	err = pblk_setup_w_rq(pblk, rqd, c_ctx, &erase_ppa, nrb);
 	if (err) {
 		pr_err("pblk: could not setup write request: %d\n", err);
 		return NVM_IO_ERR;
 	}
+ 	printk("JJY: E setup_w %d\n", smp_processor_id());
 
 	if (likely(ppa_empty(erase_ppa))) {
+	 	printk("JJY: S sched_meta_io in submit cpu %d\n", smp_processor_id());
 		/* Submit metadata write for previous data line */
-		err = pblk_sched_meta_io(pblk, rqd->ppa_list, rqd->nr_ppas);
+		err = pblk_sched_meta_io(pblk, rqd->ppa_list, rqd->nr_ppas, nrb);
+	 	printk("JJY: E sched_meta_io in submit cpu %d\n", smp_processor_id());
 		if (err) {
+			pr_err("pblk_submit_io_set");
 			pr_err("pblk: metadata I/O submission failed: %d", err);
 			return NVM_IO_ERR;
 		}
 
 		/* Submit data write for current data line */
 		err = pblk_submit_io(pblk, rqd);
+	 	printk("JJY: E submit_io_set cpu %d\n", smp_processor_id());
 		if (err) {
 			pr_err("pblk: data I/O submission failed: %d\n", err);
 			return NVM_IO_ERR;
@@ -594,7 +614,7 @@ static int pblk_submit_write(struct pblk *pblk, u8 nrb)
 		pr_err("pblk: corrupted write bio\n");
 		goto fail_put_bio;
 	}
- 	printk("JJY: writer cpu %d rb %d pos %d\n", smp_processor_id(), nrb, pos);
+// 	printk("JJY: writer cpu %d rb %d pos %d\n", smp_processor_id(), nrb, pos);
 
 	if (pblk_submit_io_set(pblk, rqd, nrb))
 		goto fail_free_bio;

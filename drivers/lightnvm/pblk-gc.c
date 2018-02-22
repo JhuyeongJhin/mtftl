@@ -30,6 +30,7 @@ static int pblk_gc_write(struct pblk *pblk)
 	struct pblk_gc_rq *gc_rq, *tgc_rq;
 	LIST_HEAD(w_list);
 
+	printk("JJY: pblk_gc_write 1\n");
 	spin_lock(&gc->w_lock);
 	if (list_empty(&gc->w_list)) {
 		spin_unlock(&gc->w_lock);
@@ -72,12 +73,14 @@ static int pblk_gc_move_valid_secs(struct pblk *pblk, struct pblk_gc_rq *gc_rq)
 	unsigned int secs_to_gc;
 	int ret = 0;
 
+	printk("JJY: move valid 1\n");
 	data = vmalloc(gc_rq->nr_secs * geo->sec_size);
 	if (!data) {
 		ret = -ENOMEM;
 		goto out;
 	}
 
+	printk("JJY: move valid 2\n");
 	/* Read from GC victim block */
 	if (pblk_submit_read_gc(pblk, gc_rq->lba_list, data, gc_rq->nr_secs,
 							&secs_to_gc, line)) {
@@ -85,12 +88,14 @@ static int pblk_gc_move_valid_secs(struct pblk *pblk, struct pblk_gc_rq *gc_rq)
 		goto free_data;
 	}
 
+	printk("JJY: move valid 3\n");
 	if (!secs_to_gc)
 		goto free_rq;
 
 	gc_rq->data = data;
 	gc_rq->secs_to_gc = secs_to_gc;
 
+	printk("JJY: move valid 4\n");
 retry:
 	spin_lock(&gc->w_lock);
 	if (gc->w_entries >= PBLK_GC_W_QD) {
@@ -103,6 +108,7 @@ retry:
 	list_add_tail(&gc_rq->list, &gc->w_list);
 	spin_unlock(&gc->w_lock);
 
+	printk("JJY: move valid 5\n");
 	pblk_gc_writer_kick(&pblk->gc);
 
 	return 0;
@@ -143,8 +149,10 @@ static void pblk_gc_line_ws(struct work_struct *work)
 	struct pblk_line *line = line_rq_ws->line;
 	struct pblk_gc_rq *gc_rq = line_rq_ws->priv;
 
+	printk("JJY: pblk_gc_line_ws 1\n");
 	up(&gc->gc_sem);
 
+	printk("JJY: pblk_gc_line_ws 2\n");
 	if (pblk_gc_move_valid_secs(pblk, gc_rq)) {
 		pr_err("pblk: could not GC all sectors: line:%d (%d/%d)\n",
 						line->id, *line->vsc,
@@ -170,6 +178,7 @@ static void pblk_gc_line_prepare_ws(struct work_struct *work)
 	int sec_left, nr_secs, bit;
 	int ret;
 
+	printk("JJY: pblk_gc_line_prepare_ws 1\n");
 	emeta_buf = pblk_malloc(lm->emeta_len[0], l_mg->emeta_alloc_type,
 								GFP_KERNEL);
 	if (!emeta_buf) {
@@ -234,6 +243,7 @@ next_rq:
 	down(&gc->gc_sem);
 	kref_get(&line->ref);
 
+	printk("JJY: pblk_gc_line_prepare_ws 2\n");
 	INIT_WORK(&line_rq_ws->ws, pblk_gc_line_ws);
 	queue_work(gc->gc_line_reader_wq, &line_rq_ws->ws);
 
@@ -269,6 +279,7 @@ static int pblk_gc_line(struct pblk *pblk, struct pblk_line *line)
 
 	pr_debug("pblk: line '%d' being reclaimed for GC\n", line->id);
 
+	printk("JJY: pblk_gc_line 1\n");
 	line_ws = mempool_alloc(pblk->line_ws_pool, GFP_KERNEL);
 	if (!line_ws)
 		return -ENOMEM;
@@ -276,6 +287,7 @@ static int pblk_gc_line(struct pblk *pblk, struct pblk_line *line)
 	line_ws->pblk = pblk;
 	line_ws->line = line;
 
+	printk("JJY: pblk_gc_line 2\n");
 	INIT_WORK(&line_ws->ws, pblk_gc_line_prepare_ws);
 	queue_work(gc->gc_reader_wq, &line_ws->ws);
 
@@ -287,6 +299,7 @@ static int pblk_gc_read(struct pblk *pblk)
 	struct pblk_gc *gc = &pblk->gc;
 	struct pblk_line *line;
 
+	printk("JJY: gc_read 1\n");
 	spin_lock(&gc->r_lock);
 	if (list_empty(&gc->r_list)) {
 		spin_unlock(&gc->r_lock);
@@ -299,6 +312,7 @@ static int pblk_gc_read(struct pblk *pblk)
 
 	pblk_gc_kick(pblk);
 
+	printk("JJY: gc_read 2\n");
 	if (pblk_gc_line(pblk, line))
 		pr_err("pblk: failed to GC line %d\n", line->id);
 
@@ -334,6 +348,7 @@ static bool pblk_gc_should_run(struct pblk_gc *gc, struct pblk_rl *rl)
 	nr_blocks_need = pblk_rl_high_thrs(rl);
 	nr_blocks_free = pblk_rl_nr_free_blks(rl);
 
+	printk("JJY: should run %d %d %d\n", gc->gc_active, nr_blocks_need, nr_blocks_free);
 	/* This is not critical, no need to take lock here */
 	return ((gc->gc_active) && (nr_blocks_need > nr_blocks_free));
 }
@@ -376,18 +391,22 @@ static void pblk_gc_run(struct pblk *pblk)
 	} while (1);
 
 	run_gc = pblk_gc_should_run(&pblk->gc, &pblk->rl);
+	printk("JJY: inflight %d %d\n", gc->inflight_gc, PBLK_GC_L_QD);
 	if (!run_gc || (atomic_read(&gc->inflight_gc) >= PBLK_GC_L_QD))
 		return;
+
 
 next_gc_group:
 	group_list = l_mg->gc_lists[gc_group++];
 
+	printk("JJY: pblk_gc_run 1\n");
 	do {
 		spin_lock(&l_mg->gc_lock);
 		if (list_empty(group_list)) {
 			spin_unlock(&l_mg->gc_lock);
 			break;
 		}
+		printk("JJY: pblk_gc_run 2\n");
 
 		line = pblk_gc_get_victim_line(pblk, group_list);
 
@@ -412,11 +431,13 @@ next_gc_group:
 		run_gc = pblk_gc_should_run(&pblk->gc, &pblk->rl);
 		if (!run_gc || inflight_gc >= PBLK_GC_L_QD)
 			break;
+		printk("JJY: pblk_gc_run 3\n");
 	} while (1);
 
 	if (!prev_group && pblk->rl.rb_state > gc_group &&
 						gc_group < PBLK_GC_NR_LISTS)
 		goto next_gc_group;
+	printk("JJY: pblk_gc_run 4\n");
 }
 
 void pblk_gc_kick(struct pblk *pblk)
@@ -454,8 +475,9 @@ static int pblk_gc_writer_ts(void *data)
 	struct pblk *pblk = data;
 
 	while (!kthread_should_stop()) {
-		if (!pblk_gc_write(pblk))
+		if (!pblk_gc_write(pblk)) {
 			continue;
+		}
 		set_current_state(TASK_INTERRUPTIBLE);
 		io_schedule();
 	}
@@ -467,9 +489,14 @@ static int pblk_gc_reader_ts(void *data)
 {
 	struct pblk *pblk = data;
 
+	printk("JJY: pblk_gc_reader_ts 1\n");
 	while (!kthread_should_stop()) {
-		if (!pblk_gc_read(pblk))
+		printk("JJY: pblk_gc_reader_ts 2\n");
+		if (!pblk_gc_read(pblk)) {
+			printk("JJY: pblk_gc_reader_ts 3\n");
 			continue;
+		}
+		printk("JJY: pblk_gc_reader_ts 4\n");
 		set_current_state(TASK_INTERRUPTIBLE);
 		io_schedule();
 	}
@@ -487,8 +514,11 @@ void pblk_gc_should_start(struct pblk *pblk)
 {
 	struct pblk_gc *gc = &pblk->gc;
 
-	if (gc->gc_enabled && !gc->gc_active)
+	printk("JJY: should start\n");
+	if (gc->gc_enabled && !gc->gc_active) {
+		printk("JJY: should start %d %d\n", gc->gc_enabled, gc->gc_active);
 		pblk_gc_start(pblk);
+	}
 
 	pblk_gc_kick(pblk);
 }

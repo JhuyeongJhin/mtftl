@@ -374,10 +374,12 @@ static void pblk_gc_run(struct pblk *pblk)
 		kref_put(&line->ref, pblk_line_put);
 	} while (1);
 
+	printk("JJY: pblk_gc_run 1\n");
 	run_gc = pblk_gc_should_run(&pblk->gc, &pblk->rl);
 	if (!run_gc || (atomic_read(&gc->inflight_gc) >= PBLK_GC_L_QD))
 		return;
 
+	printk("JJY: pblk_gc_run 2\n");
 next_gc_group:
 	group_list = l_mg->gc_lists[gc_group++];
 

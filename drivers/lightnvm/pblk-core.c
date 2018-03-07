@@ -139,6 +139,12 @@ static void pblk_invalidate_range(struct pblk *pblk, sector_t slba,
 	for (lba = slba; lba < slba + nr_secs; lba++) {
 		struct ppa_addr ppa;
 
+// MULTI-TRANS-LOCK
+//		i = lba / pblk->nr_rwb;
+//		if (i >= pblk->nr_rwb)
+//              	i = nr_rwb-1;
+//		spin_lock(&pblk->trans_lock[i]);
+
 		ppa = pblk_trans_map_get(pblk, lba);
 
 		if (!pblk_addr_in_cache(ppa) && !pblk_ppa_empty(ppa))
@@ -146,6 +152,8 @@ static void pblk_invalidate_range(struct pblk *pblk, sector_t slba,
 
 		pblk_ppa_set_empty(&ppa);
 		pblk_trans_map_set(pblk, lba, ppa);
+// MULTI-TRANS-LOCK
+//		spin_unlock(&pblk->trans_lock[i]);
 	}
 	spin_unlock(&pblk->trans_lock);
 }
@@ -351,9 +359,15 @@ struct ppa_addr pblk_get_lba_map(struct pblk *pblk, sector_t lba)
 {
 	struct ppa_addr ppa;
 
+// MULTI-TRANS-LOCK
+//	i = lba / pblk->nr_rwb;
+//	if (i >= pblk->nr_rwb)
+//             	i = nr_rwb-1;
+//	spin_lock(&pblk->trans_lock[i]);
 	spin_lock(&pblk->trans_lock);
 	ppa = pblk_trans_map_get(pblk, lba);
 	spin_unlock(&pblk->trans_lock);
+//	spin_unlock(&pblk->trans_lock[i]);
 
 	return ppa;
 }
@@ -1792,6 +1806,11 @@ void pblk_update_map(struct pblk *pblk, sector_t lba, struct ppa_addr ppa)
 		return;
 	}
 
+// MULTI-TRANS-LOCK
+//	i = lba / pblk->nr_rwb;
+//	if (i >= pblk->nr_rwb)
+//             	i = nr_rwb-1;
+//	spin_lock(&pblk->trans_lock[i]);
 	spin_lock(&pblk->trans_lock);
 	l2p_ppa = pblk_trans_map_get(pblk, lba);
 
@@ -1800,6 +1819,7 @@ void pblk_update_map(struct pblk *pblk, sector_t lba, struct ppa_addr ppa)
 
 	pblk_trans_map_set(pblk, lba, ppa);
 	spin_unlock(&pblk->trans_lock);
+//	spin_unlock(&pblk->trans_lock[i]);
 }
 
 void pblk_update_map_cache(struct pblk *pblk, sector_t lba, struct ppa_addr ppa)
@@ -1833,6 +1853,12 @@ int pblk_update_map_gc(struct pblk *pblk, sector_t lba, struct ppa_addr ppa,
 		return 0;
 	}
 
+//      MULTI-TRANS-LOCK
+//      i = lba / pblk->nr_rwb;
+//      if (i >= pblk->nr_rwb)
+//              i = nr_rwb-1;
+//      spin_lock(&pblk->trans_lock[i]);
+
 	spin_lock(&pblk->trans_lock);
 	l2p_ppa = pblk_trans_map_get(pblk, lba);
 
@@ -1846,6 +1872,8 @@ int pblk_update_map_gc(struct pblk *pblk, sector_t lba, struct ppa_addr ppa,
 	pblk_trans_map_set(pblk, lba, ppa);
 out:
 	spin_unlock(&pblk->trans_lock);
+//      MULTI-TRANS-LOCK
+//      spin_unlock(&pblk->trans_lock[i]);
 	return ret;
 }
 
@@ -1873,6 +1901,12 @@ void pblk_update_map_dev(struct pblk *pblk, sector_t lba, struct ppa_addr ppa,
 		return;
 	}
 
+//      MULTI-TRANS-LOCK
+//      i = lba / pblk->nr_rwb;
+//      if (i >= pblk->nr_rwb)
+//              i = nr_rwb-1;
+//      spin_lock(&pblk->trans_lock[i]);
+
 	spin_lock(&pblk->trans_lock);
 	l2p_line = pblk_trans_map_get(pblk, lba);
 
@@ -1892,6 +1926,9 @@ void pblk_update_map_dev(struct pblk *pblk, sector_t lba, struct ppa_addr ppa,
 	pblk_trans_map_set(pblk, lba, ppa);
 out:
 	spin_unlock(&pblk->trans_lock);
+//      MULTI-TRANS-LOCK
+//      spin_unlock(&pblk->trans_lock[i]);
+
 }
 
 void pblk_lookup_l2p_seq(struct pblk *pblk, struct ppa_addr *ppas,
@@ -1900,8 +1937,17 @@ void pblk_lookup_l2p_seq(struct pblk *pblk, struct ppa_addr *ppas,
 	int i;
 
 	spin_lock(&pblk->trans_lock);
-	for (i = 0; i < nr_secs; i++)
+	for (i = 0; i < nr_secs; i++) {
+//      MULTI-TRANS-LOCK
+//      i = lba / pblk->nr_rwb;
+//      if (i >= pblk->nr_rwb)
+//              i = nr_rwb-1;
+//      spin_lock(&pblk->trans_lock[i]);
 		ppas[i] = pblk_trans_map_get(pblk, blba + i);
+//      MULTI-TRANS-LOCK
+//      spin_unlock(&pblk->trans_lock[i]);
+
+	}
 	spin_unlock(&pblk->trans_lock);
 }
 
@@ -1914,6 +1960,12 @@ void pblk_lookup_l2p_rand(struct pblk *pblk, struct ppa_addr *ppas,
 	spin_lock(&pblk->trans_lock);
 	for (i = 0; i < nr_secs; i++) {
 		lba = lba_list[i];
+//      MULTI-TRANS-LOCK
+//      i = lba / pblk->nr_rwb;
+//      if (i >= pblk->nr_rwb)
+//              i = nr_rwb-1;
+//      spin_lock(&pblk->trans_lock[i]);
+
 		if (lba == ADDR_EMPTY) {
 			ppas[i].ppa = ADDR_EMPTY;
 		} else {
@@ -1924,6 +1976,9 @@ void pblk_lookup_l2p_rand(struct pblk *pblk, struct ppa_addr *ppas,
 			}
 			ppas[i] = pblk_trans_map_get(pblk, lba);
 		}
+//      MULTI-TRANS-LOCK
+//      spin_unlock(&pblk->trans_lock[i]);
+
 	}
 	spin_unlock(&pblk->trans_lock);
 }

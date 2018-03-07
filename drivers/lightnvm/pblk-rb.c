@@ -731,6 +731,8 @@ int pblk_rb_copy_to_bio(struct pblk_rb *rb, struct bio *bio, sector_t lba,
 	void *data;
 	int flags;
 	int ret = 1;
+// MULTI-TRANS-LOCK
+//	unsigned int i = rb->index;
 
 
 #ifdef CONFIG_NVM_DEBUG
@@ -742,9 +744,13 @@ int pblk_rb_copy_to_bio(struct pblk_rb *rb, struct bio *bio, sector_t lba,
 	flags = READ_ONCE(w_ctx->flags);
 
 	spin_lock(&rb->w_lock);
+// MULTI-TRANS-LOCK
+//	spin_lock(&pblk->trans_lock[i]);
 	spin_lock(&pblk->trans_lock);
 	l2p_ppa = pblk_trans_map_get(pblk, lba);
 	spin_unlock(&pblk->trans_lock);
+// MULTI-TRANS-LOCK
+//	spin_unlock(&pblk->trans_lock[i]);
 
 	/* Check if the entry has been overwritten or is scheduled to be */
 	if (!pblk_ppa_comp(l2p_ppa, ppa) || w_ctx->lba != lba ||

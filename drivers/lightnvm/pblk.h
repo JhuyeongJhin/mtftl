@@ -634,7 +634,8 @@ struct pblk {
 	 * addresses are used when writing to the disk block device.
 	 */
 	unsigned char *trans_map;
-	spinlock_t trans_lock;
+// MULTI-TRANS-LOCK
+	spinlock_t *trans_lock;
 
 
 	mempool_t *page_pool;

@@ -446,10 +446,15 @@ static int read_rq_gc(struct pblk *pblk, struct nvm_rq *rqd,
 		WARN(1, "pblk: read lba out of bounds\n");
 		goto out;
 	}
-
+//	MULTI-TRANS-LOCK
+//	i = lba / pblk->nr_rwb;
+//	if (i >= pblk->nr_rwb)
+//		i = nr_rwb-1;
+//	spin_lock(&pblk->trans_lock[i]);
 	spin_lock(&pblk->trans_lock);
 	ppa = pblk_trans_map_get(pblk, lba);
 	spin_unlock(&pblk->trans_lock);
+//	spin_unlock(&pblk->trans_lock[i]);
 
 	/* Ignore updated values until the moment */
 	if (pblk_addr_in_cache(ppa) || ppa.g.blk != line->id ||

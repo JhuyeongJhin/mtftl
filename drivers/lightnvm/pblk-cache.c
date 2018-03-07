@@ -46,6 +46,8 @@ retry:
 			nrb = pblk_rb_remain_max(pblk, nr_entries, pblk->nr_rwb-1);
 		else
 			nrb = pblk_rb_remain_max(pblk, nr_entries, pblk->nr_rwb);
+	} else if (user_rb_option == 5) {
+		nrb = smp_processor_id();
 	}
 
 	ret = pblk_rb_may_write_user(&pblk->rb_ctx[nrb].rwb, nrb, bio, nr_entries, &bpos);
@@ -67,7 +69,7 @@ retry:
 	spin_unlock(&pblk->rb_ctx[nrb].rwb.w_lock);
 
 	if (user_rb_option == 1)
-		preempt_enable();	// JJY: TODO: enable position
+		preempt_enable();	// JJY TODO: enable position
 
 	if (unlikely(!bio_has_data(bio)))
 		goto out;

@@ -101,7 +101,7 @@ static int pblk_rl_update_rates(struct pblk_rl *rl, unsigned long max)
 	unsigned long free_blocks = pblk_rl_nr_free_blks(rl);
 
 	if (free_blocks >= rl->high) {
-		printk("JJY: update %d %d\n", free_blocks, rl->high);
+//		printk("JJY: update %d %d\n", free_blocks, rl->high);
 		rl->rb_user_max = max;
 		rl->rb_gc_max = 0;
 		rl->rb_state = PBLK_RL_HIGH;
@@ -110,7 +110,7 @@ static int pblk_rl_update_rates(struct pblk_rl *rl, unsigned long max)
 		int user_windows = free_blocks >> shift;
 		int user_max = user_windows << PBLK_MAX_REQ_ADDRS_PW;
 
-		printk("JJY: update %d %d\n", free_blocks, rl->high);
+//		printk("JJY: update %d %d\n", free_blocks, rl->high);
 		rl->rb_user_max = user_max;
 		rl->rb_gc_max = max - user_max;
 

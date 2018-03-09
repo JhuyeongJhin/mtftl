@@ -112,7 +112,7 @@ int pblk_write_gc_to_cache(struct pblk *pblk, void *data, u64 *lba_list,
 	unsigned int nrb;
 	int gc_rb_option = pblk->gc_rb_option;
 
-	printk("JJY: pblk_write_gc_to_cache begin\n");
+//	printk("JJY: pblk_write_gc_to_cache begin\n");
 	/* Update the write buffer head (mem) with the entries that we can
 	 * write. The write in itself cannot fail, so there is no need to
 	 * rollback from here on.
@@ -145,7 +145,7 @@ retry:
 	w_ctx.flags = flags;
 	pblk_ppa_set_empty(&w_ctx.ppa);
 
-	printk("JJY: pblk_write_gc_to_cache\n");
+//	printk("JJY: pblk_write_gc_to_cache\n");
 	for (i = 0, valid_entries = 0; i < nr_entries; i++) {
 		if (lba_list[i] == ADDR_EMPTY)
 			continue;

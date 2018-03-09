@@ -127,6 +127,7 @@ static int pblk_rwb_init(struct pblk *pblk)
 	int i, ret = 0;
 
 	nr_entries = pblk_rb_calculate_size(pblk->pgs_in_buffer);
+//	nr_entries /= nr_rwb;
 	power_size = get_count_order(nr_entries);
 	power_seg_sz = get_count_order(geo->sec_size);
 

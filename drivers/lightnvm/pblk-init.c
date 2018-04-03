@@ -990,11 +990,11 @@ static void *pblk_init(struct nvm_tgt_dev *dev, struct gendisk *tdisk,
 
 // MULTI-TRANS-LOCK
 //	allocating multiple l2p lock
-//	pblk->trans_lock = kmalloc(pblk->nr_rwb * sizeof(spinlock_t));
-//	for i = 0 ~ pblk->nr_rwb
-//		spin_lock_init(&pblk->trans_lock[i]);
+	pblk->trans_lock = kmalloc(pblk->nr_rwb * sizeof(spinlock_t), GFP_KERNEL);
+	for (i = 0; i < pblk->nr_rwb; i++)
+		spin_lock_init(&pblk->trans_lock[i]);
 
-	spin_lock_init(&pblk->trans_lock);
+//	spin_lock_init(&pblk->trans_lock);
 	spin_lock_init(&pblk->lock);
 
 	if (flags & NVM_TARGET_FACTORY) {

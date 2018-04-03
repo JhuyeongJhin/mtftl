@@ -636,7 +636,7 @@ struct pblk {
 	unsigned char *trans_map;
 // MULTI-TRANS-LOCK
 	spinlock_t *trans_lock;
-
+//	spinlock_t trans_lock;
 
 	mempool_t *page_pool;
 	mempool_t *line_ws_pool;
